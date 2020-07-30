@@ -1,0 +1,400 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Saving and Loading Models\n",
+    "\n",
+    "In this notebook, I'll show you how to save and load models with PyTorch. This is important because you'll often want to load previously trained models to use in making predictions or to continue training on new data."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "%matplotlib inline\n",
+    "%config InlineBackend.figure_format = 'retina'\n",
+    "\n",
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "import torch\n",
+    "from torch import nn\n",
+    "from torch import optim\n",
+    "import torch.nn.functional as F\n",
+    "from torchvision import datasets, transforms\n",
+    "\n",
+    "import helper\n",
+    "import fc_model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Define a transform to normalize the data\n",
+    "transform = transforms.Compose([transforms.ToTensor(),\n",
+    "                                transforms.Normalize((0.5,), (0.5,))])\n",
+    "# Download and load the training data\n",
+    "trainset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=True, transform=transform)\n",
+    "trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True)\n",
+    "\n",
+    "# Download and load the test data\n",
+    "testset = datasets.FashionMNIST('F_MNIST_data/', download=True, train=False, transform=transform)\n",
+    "testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Here we can see one of the images."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<matplotlib.figure.Figure at 0x7f47584414e0>"
+      ]
+     },
+     "metadata": {
+      "image/png": {
+       "height": 233,
+       "width": 233
+      },
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "image, label = next(iter(trainloader))\n",
+    "helper.imshow(image[0,:]);"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Train a network\n",
+    "\n",
+    "To make things more concise here, I moved the model architecture and training code from the last part to a file called `fc_model`. Importing this, we can easily create a fully-connected network with `fc_model.Network`, and train the network using `fc_model.train`. I'll use this model (once it's trained) to demonstrate how we can save and load models."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Create the network, define the criterion and optimizer\n",
+    "\n",
+    "model = fc_model.Network(784, 10, [512, 256, 128])\n",
+    "criterion = nn.NLLLoss()\n",
+    "optimizer = optim.Adam(model.parameters(), lr=0.001)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Epoch: 1/2..  Training Loss: 1.713..  Test Loss: 0.953..  Test Accuracy: 0.678\n",
+      "Epoch: 1/2..  Training Loss: 1.043..  Test Loss: 0.727..  Test Accuracy: 0.728\n",
+      "Epoch: 1/2..  Training Loss: 0.886..  Test Loss: 0.693..  Test Accuracy: 0.746\n",
+      "Epoch: 1/2..  Training Loss: 0.785..  Test Loss: 0.671..  Test Accuracy: 0.753\n",
+      "Epoch: 1/2..  Training Loss: 0.741..  Test Loss: 0.638..  Test Accuracy: 0.767\n",
+      "Epoch: 1/2..  Training Loss: 0.705..  Test Loss: 0.584..  Test Accuracy: 0.774\n",
+      "Epoch: 1/2..  Training Loss: 0.690..  Test Loss: 0.586..  Test Accuracy: 0.787\n",
+      "Epoch: 1/2..  Training Loss: 0.679..  Test Loss: 0.568..  Test Accuracy: 0.796\n",
+      "Epoch: 1/2..  Training Loss: 0.698..  Test Loss: 0.563..  Test Accuracy: 0.796\n",
+      "Epoch: 1/2..  Training Loss: 0.636..  Test Loss: 0.549..  Test Accuracy: 0.797\n",
+      "Epoch: 1/2..  Training Loss: 0.642..  Test Loss: 0.546..  Test Accuracy: 0.801\n",
+      "Epoch: 1/2..  Training Loss: 0.641..  Test Loss: 0.530..  Test Accuracy: 0.808\n",
+      "Epoch: 1/2..  Training Loss: 0.598..  Test Loss: 0.517..  Test Accuracy: 0.807\n",
+      "Epoch: 1/2..  Training Loss: 0.595..  Test Loss: 0.501..  Test Accuracy: 0.811\n",
+      "Epoch: 1/2..  Training Loss: 0.616..  Test Loss: 0.518..  Test Accuracy: 0.814\n",
+      "Epoch: 1/2..  Training Loss: 0.590..  Test Loss: 0.504..  Test Accuracy: 0.818\n",
+      "Epoch: 1/2..  Training Loss: 0.607..  Test Loss: 0.488..  Test Accuracy: 0.822\n",
+      "Epoch: 1/2..  Training Loss: 0.586..  Test Loss: 0.503..  Test Accuracy: 0.822\n",
+      "Epoch: 1/2..  Training Loss: 0.556..  Test Loss: 0.491..  Test Accuracy: 0.822\n",
+      "Epoch: 1/2..  Training Loss: 0.592..  Test Loss: 0.475..  Test Accuracy: 0.822\n",
+      "Epoch: 1/2..  Training Loss: 0.593..  Test Loss: 0.512..  Test Accuracy: 0.818\n",
+      "Epoch: 1/2..  Training Loss: 0.551..  Test Loss: 0.494..  Test Accuracy: 0.822\n",
+      "Epoch: 1/2..  Training Loss: 0.541..  Test Loss: 0.488..  Test Accuracy: 0.821\n",
+      "Epoch: 2/2..  Training Loss: 0.541..  Test Loss: 0.484..  Test Accuracy: 0.825\n",
+      "Epoch: 2/2..  Training Loss: 0.560..  Test Loss: 0.477..  Test Accuracy: 0.829\n",
+      "Epoch: 2/2..  Training Loss: 0.588..  Test Loss: 0.469..  Test Accuracy: 0.827\n",
+      "Epoch: 2/2..  Training Loss: 0.553..  Test Loss: 0.491..  Test Accuracy: 0.826\n",
+      "Epoch: 2/2..  Training Loss: 0.559..  Test Loss: 0.481..  Test Accuracy: 0.826\n",
+      "Epoch: 2/2..  Training Loss: 0.510..  Test Loss: 0.485..  Test Accuracy: 0.819\n",
+      "Epoch: 2/2..  Training Loss: 0.554..  Test Loss: 0.471..  Test Accuracy: 0.830\n",
+      "Epoch: 2/2..  Training Loss: 0.532..  Test Loss: 0.459..  Test Accuracy: 0.830\n",
+      "Epoch: 2/2..  Training Loss: 0.544..  Test Loss: 0.477..  Test Accuracy: 0.830\n",
+      "Epoch: 2/2..  Training Loss: 0.560..  Test Loss: 0.461..  Test Accuracy: 0.830\n",
+      "Epoch: 2/2..  Training Loss: 0.528..  Test Loss: 0.448..  Test Accuracy: 0.839\n",
+      "Epoch: 2/2..  Training Loss: 0.521..  Test Loss: 0.444..  Test Accuracy: 0.838\n",
+      "Epoch: 2/2..  Training Loss: 0.538..  Test Loss: 0.447..  Test Accuracy: 0.836\n",
+      "Epoch: 2/2..  Training Loss: 0.505..  Test Loss: 0.451..  Test Accuracy: 0.833\n",
+      "Epoch: 2/2..  Training Loss: 0.524..  Test Loss: 0.469..  Test Accuracy: 0.829\n",
+      "Epoch: 2/2..  Training Loss: 0.555..  Test Loss: 0.445..  Test Accuracy: 0.837\n",
+      "Epoch: 2/2..  Training Loss: 0.522..  Test Loss: 0.467..  Test Accuracy: 0.829\n",
+      "Epoch: 2/2..  Training Loss: 0.541..  Test Loss: 0.447..  Test Accuracy: 0.836\n",
+      "Epoch: 2/2..  Training Loss: 0.537..  Test Loss: 0.455..  Test Accuracy: 0.831\n",
+      "Epoch: 2/2..  Training Loss: 0.539..  Test Loss: 0.445..  Test Accuracy: 0.841\n",
+      "Epoch: 2/2..  Training Loss: 0.473..  Test Loss: 0.442..  Test Accuracy: 0.841\n",
+      "Epoch: 2/2..  Training Loss: 0.463..  Test Loss: 0.449..  Test Accuracy: 0.835\n",
+      "Epoch: 2/2..  Training Loss: 0.477..  Test Loss: 0.448..  Test Accuracy: 0.836\n"
+     ]
+    }
+   ],
+   "source": [
+    "fc_model.train(model, trainloader, testloader, criterion, optimizer, epochs=2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Saving and loading networks\n",
+    "\n",
+    "As you can imagine, it's impractical to train a network every time you need to use it. Instead, we can save trained networks then load them later to train more or use them for predictions.\n",
+    "\n",
+    "The parameters for PyTorch networks are stored in a model's `state_dict`. We can see the state dict contains the weight and bias matrices for each of our layers."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Our model: \n",
+      "\n",
+      " Network(\n",
+      "  (hidden_layers): ModuleList(\n",
+      "    (0): Linear(in_features=784, out_features=512, bias=True)\n",
+      "    (1): Linear(in_features=512, out_features=256, bias=True)\n",
+      "    (2): Linear(in_features=256, out_features=128, bias=True)\n",
+      "  )\n",
+      "  (output): Linear(in_features=128, out_features=10, bias=True)\n",
+      "  (dropout): Dropout(p=0.5)\n",
+      ") \n",
+      "\n",
+      "The state dict keys: \n",
+      "\n",
+      " odict_keys(['hidden_layers.0.weight', 'hidden_layers.0.bias', 'hidden_layers.1.weight', 'hidden_layers.1.bias', 'hidden_layers.2.weight', 'hidden_layers.2.bias', 'output.weight', 'output.bias'])\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"Our model: \\n\\n\", model, '\\n')\n",
+    "print(\"The state dict keys: \\n\\n\", model.state_dict().keys())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The simplest thing to do is simply save the state dict with `torch.save`. For example, we can save it to a file `'checkpoint.pth'`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "torch.save(model.state_dict(), 'checkpoint.pth')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Then we can load the state dict with `torch.load`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "odict_keys(['hidden_layers.0.weight', 'hidden_layers.0.bias', 'hidden_layers.1.weight', 'hidden_layers.1.bias', 'hidden_layers.2.weight', 'hidden_layers.2.bias', 'output.weight', 'output.bias'])\n"
+     ]
+    }
+   ],
+   "source": [
+    "state_dict = torch.load('checkpoint.pth')\n",
+    "print(state_dict.keys())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "And to load the state dict in to the network, you do `model.load_state_dict(state_dict)`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model.load_state_dict(state_dict)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Seems pretty straightforward, but as usual it's a bit more complicated. Loading the state dict works only if the model architecture is exactly the same as the checkpoint architecture. If I create a model with a different architecture, this fails."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "RuntimeError",
+     "evalue": "Error(s) in loading state_dict for Network:\n\tWhile copying the parameter named \"hidden_layers.0.weight\", whose dimensions in the model are torch.Size([400, 784]) and whose dimensions in the checkpoint are torch.Size([512, 784]).\n\tWhile copying the parameter named \"hidden_layers.0.bias\", whose dimensions in the model are torch.Size([400]) and whose dimensions in the checkpoint are torch.Size([512]).\n\tWhile copying the parameter named \"hidden_layers.1.weight\", whose dimensions in the model are torch.Size([200, 400]) and whose dimensions in the checkpoint are torch.Size([256, 512]).\n\tWhile copying the parameter named \"hidden_layers.1.bias\", whose dimensions in the model are torch.Size([200]) and whose dimensions in the checkpoint are torch.Size([256]).\n\tWhile copying the parameter named \"hidden_layers.2.weight\", whose dimensions in the model are torch.Size([100, 200]) and whose dimensions in the checkpoint are torch.Size([128, 256]).\n\tWhile copying the parameter named \"hidden_layers.2.bias\", whose dimensions in the model are torch.Size([100]) and whose dimensions in the checkpoint are torch.Size([128]).\n\tWhile copying the parameter named \"output.weight\", whose dimensions in the model are torch.Size([10, 100]) and whose dimensions in the checkpoint are torch.Size([10, 128]).",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mRuntimeError\u001b[0m                              Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-10-d859c59ebec0>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m      2\u001b[0m \u001b[0mmodel\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mfc_model\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mNetwork\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;36m784\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m10\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m[\u001b[0m\u001b[0;36m400\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m200\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m100\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      3\u001b[0m \u001b[0;31m# This will throw an error because the tensor sizes are wrong!\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 4\u001b[0;31m \u001b[0mmodel\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mload_state_dict\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mstate_dict\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py\u001b[0m in \u001b[0;36mload_state_dict\u001b[0;34m(self, state_dict, strict)\u001b[0m\n\u001b[1;32m    719\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0mlen\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0merror_msgs\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m>\u001b[0m \u001b[0;36m0\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    720\u001b[0m             raise RuntimeError('Error(s) in loading state_dict for {}:\\n\\t{}'.format(\n\u001b[0;32m--> 721\u001b[0;31m                                self.__class__.__name__, \"\\n\\t\".join(error_msgs)))\n\u001b[0m\u001b[1;32m    722\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    723\u001b[0m     \u001b[0;32mdef\u001b[0m \u001b[0mparameters\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mRuntimeError\u001b[0m: Error(s) in loading state_dict for Network:\n\tWhile copying the parameter named \"hidden_layers.0.weight\", whose dimensions in the model are torch.Size([400, 784]) and whose dimensions in the checkpoint are torch.Size([512, 784]).\n\tWhile copying the parameter named \"hidden_layers.0.bias\", whose dimensions in the model are torch.Size([400]) and whose dimensions in the checkpoint are torch.Size([512]).\n\tWhile copying the parameter named \"hidden_layers.1.weight\", whose dimensions in the model are torch.Size([200, 400]) and whose dimensions in the checkpoint are torch.Size([256, 512]).\n\tWhile copying the parameter named \"hidden_layers.1.bias\", whose dimensions in the model are torch.Size([200]) and whose dimensions in the checkpoint are torch.Size([256]).\n\tWhile copying the parameter named \"hidden_layers.2.weight\", whose dimensions in the model are torch.Size([100, 200]) and whose dimensions in the checkpoint are torch.Size([128, 256]).\n\tWhile copying the parameter named \"hidden_layers.2.bias\", whose dimensions in the model are torch.Size([100]) and whose dimensions in the checkpoint are torch.Size([128]).\n\tWhile copying the parameter named \"output.weight\", whose dimensions in the model are torch.Size([10, 100]) and whose dimensions in the checkpoint are torch.Size([10, 128])."
+     ]
+    }
+   ],
+   "source": [
+    "# Try this\n",
+    "model = fc_model.Network(784, 10, [400, 200, 100])\n",
+    "# This will throw an error because the tensor sizes are wrong!\n",
+    "model.load_state_dict(state_dict)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This means we need to rebuild the model exactly as it was when trained. Information about the model architecture needs to be saved in the checkpoint, along with the state dict. To do this, you build a dictionary with all the information you need to compeletely rebuild the model."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "checkpoint = {'input_size': 784,\n",
+    "              'output_size': 10,\n",
+    "              'hidden_layers': [each.out_features for each in model.hidden_layers],\n",
+    "              'state_dict': model.state_dict()}\n",
+    "\n",
+    "torch.save(checkpoint, 'checkpoint.pth')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now the checkpoint has all the necessary information to rebuild the trained model. You can easily make that a function if you want. Similarly, we can write a function to load checkpoints. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def load_checkpoint(filepath):\n",
+    "    checkpoint = torch.load(filepath)\n",
+    "    model = fc_model.Network(checkpoint['input_size'],\n",
+    "                             checkpoint['output_size'],\n",
+    "                             checkpoint['hidden_layers'])\n",
+    "    model.load_state_dict(checkpoint['state_dict'])\n",
+    "    \n",
+    "    return model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Network(\n",
+      "  (hidden_layers): ModuleList(\n",
+      "    (0): Linear(in_features=784, out_features=400, bias=True)\n",
+      "    (1): Linear(in_features=400, out_features=200, bias=True)\n",
+      "    (2): Linear(in_features=200, out_features=100, bias=True)\n",
+      "  )\n",
+      "  (output): Linear(in_features=100, out_features=10, bias=True)\n",
+      "  (dropout): Dropout(p=0.5)\n",
+      ")\n"
+     ]
+    }
+   ],
+   "source": [
+    "model = load_checkpoint('checkpoint.pth')\n",
+    "print(model)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
